@@ -21,6 +21,6 @@ jobs:
             - uses: actions/download-artifact@v4
               with:
                 name: my-artifact
-                path: /
+                path: ./dragon.txt
             - name: show file
-              run: cat dragon.txt
+              run: cat dragon.txt/dragon.txt
