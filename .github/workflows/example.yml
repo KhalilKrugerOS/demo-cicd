@@ -23,4 +23,4 @@ jobs:
                 name: my-artifact
                 path: ubuntu/
             - name: show file
-              run: ls
+              run: cat ubuntu/my-artifact
