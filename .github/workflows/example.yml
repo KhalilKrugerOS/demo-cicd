@@ -21,6 +21,6 @@ jobs:
             - uses: actions/download-artifact@v4
               with:
                 name: my-artifact
-                path: ubuntu/
+                path: ./dragon.txt
             - name: show file
-              run: cat ubuntu/my-artifact
+              run: ls
