@@ -1,10 +1,7 @@
 pipeline {
     agent any
     
-    tools {
-        nodejs 'NodeJS'  // Make sure this matches your NodeJS installation name in Jenkins
-    }
-    
+  
     environment {
         NODE_ENV = 'test'
     }
