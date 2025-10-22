@@ -1,26 +1,95 @@
-name: example-ci
+name: CI
 
-on: push
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Install cowsay Program
-              run: sudo apt-get install cowsay -y
-            - name: Execute Cowsay CMD
-              run: cowsay -f dragon "Runn for cover, I am Dragon" >> dragon.txt
-            - uses: actions/upload-artifact@v4
-              with:
-                name: my-artifact
-                path: ./dragon.txt
-    deploy:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/download-artifact@v4
-              with:
-                name: my-artifact
-                path: ./
-            - name: show file
-              run: cat ./dragon.txt
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Upload lint results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-output
+          path: .eslintcache || .
+
+  test:
+    name: Test
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            ./npm-debug.log
+            ./**/mochareports || ./
+
+  docker-build:
+    name: Docker build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to DockerHub (optional)
+        if: false
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t demo-cicd:latest .
+          docker save demo-cicd:latest -o demo-cicd-latest.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: demo-cicd-latest.tar
