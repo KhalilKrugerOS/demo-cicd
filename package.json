@@ -1,0 +1,23 @@
+{
+  "name": "simple-nodejs-app",
+  "version": "1.0.0",
+  "description": "Simple Node.js app for Jenkins CI/CD",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "mocha test/**/*.test.js --exit",
+    "lint": "eslint ."
+  },
+  "keywords": ["nodejs", "express", "jenkins", "cicd"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.7",
+    "eslint": "^8.50.0",
+    "supertest": "^6.3.3"
+  }
+}
