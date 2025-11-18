@@ -1,0 +1,88 @@
+# Custom Values Example
+# Copy this file and modify for your deployment
+# Usage: helm upgrade --install demo-cicd ./helm -f helm/values-custom.yaml
+
+# Replace with your Docker Hub username
+image:
+  repository: your-dockerhub-username/demo-cicd
+  pullPolicy: IfNotPresent
+  tag: "latest"  # or specific version like "1", "2", etc.
+
+# Number of replicas
+replicaCount: 3
+
+# Service configuration
+service:
+  type: NodePort
+  port: 3000
+  targetPort: 3000
+  nodePort: 30080  # Change if you need a different port
+
+# Resource limits (adjust based on your needs)
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# Enable autoscaling (optional)
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+# Environment variables
+env:
+  - name: NODE_ENV
+    value: "production"
+  - name: PORT
+    value: "3000"
+  - name: LOG_LEVEL
+    value: "info"
+
+# Health check configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Node selector (optional - for specific nodes)
+# nodeSelector:
+#   disktype: ssd
+
+# Tolerations (optional - for taints)
+# tolerations:
+#   - key: "key1"
+#     operator: "Equal"
+#     value: "value1"
+#     effect: "NoSchedule"
+
+# Affinity rules (optional - pod placement)
+# affinity:
+#   podAntiAffinity:
+#     preferredDuringSchedulingIgnoredDuringExecution:
+#       - weight: 100
+#         podAffinityTerm:
+#           labelSelector:
+#             matchExpressions:
+#               - key: app.kubernetes.io/name
+#                 operator: In
+#                 values:
+#                   - demo-cicd
+#           topologyKey: kubernetes.io/hostname

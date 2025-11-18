@@ -3,8 +3,12 @@ pipeline {
 
     environment {
         NODE_ENV = 'test'
-        SONAR_HOST_URL = 'http://localhost:9000'    // URL de ton conteneur SonarQube
-        SONAR_LOGIN = credentials('sonarqube-token') // ID du token configuré dans Jenkins
+        SONAR_HOST_URL = 'http://localhost:9000'
+        SONAR_LOGIN = credentials('sonarqube-token')
+        DOCKER_IMAGE_NAME = 'demo-cicd'
+        KIND_CLUSTER_NAME = 'queueaicluster'
+        HELM_RELEASE_NAME = 'demo-cicd'
+        K8S_NAMESPACE = 'default'
     }
 
     stages {
@@ -25,7 +29,7 @@ pipeline {
         stage('Lint') {
             steps {
                 echo 'Running linter...'
-                sh 'npm run lint || true'  // Ne fait pas échouer le build si le lint échoue
+                sh 'npm run lint || true'
             }
         }
 
@@ -55,8 +59,8 @@ pipeline {
             steps {
                 echo 'Building Docker image...'
                 script {
-                    sh 'docker build -t demo-cicd:latest .'
-                    sh "docker tag demo-cicd:latest demo-cicd:${env.BUILD_NUMBER}"
+                    sh "docker build -t ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ${DOCKER_IMAGE_NAME}:latest"
                 }
             }
         }
@@ -67,42 +71,85 @@ pipeline {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                        sh "docker tag demo-cicd:latest \$DOCKER_USER/demo-cicd:latest"
-                        sh "docker tag demo-cicd:latest \$DOCKER_USER/demo-cicd:${env.BUILD_NUMBER}"
-                        sh "docker push \$DOCKER_USER/demo-cicd:latest"
-                        sh "docker push \$DOCKER_USER/demo-cicd:${env.BUILD_NUMBER}"
+                        sh "docker tag ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} \$DOCKER_USER/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                        sh "docker tag ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} \$DOCKER_USER/${DOCKER_IMAGE_NAME}:latest"
+                        sh "docker push \$DOCKER_USER/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                        sh "docker push \$DOCKER_USER/${DOCKER_IMAGE_NAME}:latest"
+                        echo "Docker images pushed successfully!"
+                        echo "  - \$DOCKER_USER/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                        echo "  - \$DOCKER_USER/${DOCKER_IMAGE_NAME}:latest"
                     }
                 }
             }
         }
 
-        stage('Load Image to kind') {
+        stage('Load Image to Kind Cluster') {
             steps {
-                echo 'Loading Docker image into kind cluster...'
+                echo "Loading Docker image into Kind cluster: ${KIND_CLUSTER_NAME}..."
                 script {
-                    sh 'kind load docker-image demo-cicd:latest --name kind'
+                    sh "kind load docker-image ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} --name ${KIND_CLUSTER_NAME}"
+                    sh "kind load docker-image ${DOCKER_IMAGE_NAME}:latest --name ${KIND_CLUSTER_NAME}"
+                    echo "Docker images loaded into Kind cluster successfully!"
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy with Helm') {
             steps {
-                echo 'Deploying to Kubernetes (kind)...'
+                echo "Deploying application with Helm to ${KIND_CLUSTER_NAME}..."
                 script {
-                    sh '''
-                        kubectl apply -f k8s/deployment.yaml
-                        kubectl apply -f k8s/service.yaml
-                        
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            # Set kubectl context for Kind cluster
+                            kubectl config use-context kind-${KIND_CLUSTER_NAME}
+                            
+                            # Update Helm dependencies
+                            helm dependency update ./helm || true
+                            
+                            # Upgrade or install the Helm release
+                            helm upgrade --install ${HELM_RELEASE_NAME} ./helm \
+                                --namespace ${K8S_NAMESPACE} \
+                                --create-namespace \
+                                --set image.repository=\$DOCKER_USER/${DOCKER_IMAGE_NAME} \
+                                --set image.tag=${env.BUILD_NUMBER} \
+                                --set image.pullPolicy=IfNotPresent \
+                                --wait \
+                                --timeout 5m \
+                                --atomic
+                            
+                            echo "Helm deployment completed!"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo 'Verifying deployment...'
+                script {
+                    sh """
                         # Wait for rollout to complete
-                        kubectl rollout status deployment/demo-cicd --timeout=2m
+                        kubectl rollout status deployment/${HELM_RELEASE_NAME} -n ${K8S_NAMESPACE} --timeout=3m
                         
                         # Show deployment status
-                        kubectl get pods -l app=demo-cicd
-                        kubectl get service demo-cicd-service
+                        echo "\\n=== Deployment Status ==="
+                        kubectl get deployment ${HELM_RELEASE_NAME} -n ${K8S_NAMESPACE}
                         
-                        echo "Application deployed to Kubernetes!"
-                        echo "Access the app at: http://localhost:30080"
-                    '''
+                        echo "\\n=== Pods ==="
+                        kubectl get pods -l app.kubernetes.io/name=demo-cicd -n ${K8S_NAMESPACE}
+                        
+                        echo "\\n=== Services ==="
+                        kubectl get service ${HELM_RELEASE_NAME} -n ${K8S_NAMESPACE}
+                        
+                        echo "\\n=== Application Info ==="
+                        echo "Application deployed successfully!"
+                        echo "Access the application at: http://localhost:30080"
+                        echo "Health check: http://localhost:30080/health"
+                        
+                        echo "\\n=== Helm Release Info ==="
+                        helm list -n ${K8S_NAMESPACE}
+                    """
                 }
             }
         }
@@ -110,14 +157,24 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline executed successfully!'
+            echo '✅ Pipeline executed successfully!'
+            echo "🚀 Application deployed to Kind cluster: ${KIND_CLUSTER_NAME}"
+            echo "🌐 Access URL: http://localhost:30080"
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed!'
+            script {
+                sh """
+                    echo "\\n=== Debug Information ==="
+                    kubectl get all -n ${K8S_NAMESPACE} || true
+                    kubectl describe deployment ${HELM_RELEASE_NAME} -n ${K8S_NAMESPACE} || true
+                    kubectl logs -l app.kubernetes.io/name=demo-cicd -n ${K8S_NAMESPACE} --tail=50 || true
+                """
+            }
         }
         always {
-            echo 'Cleaning up...'
-            cleanWs()
-        }
-    }
+            echo 'Cleaning up workspace...'
+            sh 'docker logout || true'
+        }
+    }
 }
