@@ -89,19 +89,6 @@ pipeline {
             }
         }
 
-        stage('Load Image to Kind Cluster') {
-            steps {
-                echo "Loading Docker image into Kind cluster: ${KIND_CLUSTER_NAME}..."
-                script {
-                    sh """
-                        kind load docker-image ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} --name ${KIND_CLUSTER_NAME}
-                        kind load docker-image ${DOCKER_IMAGE_NAME}:latest --name ${KIND_CLUSTER_NAME}
-                        echo "✓ Images loaded to Kind cluster"
-                    """
-                }
-            }
-        }
-
         stage('Deploy with Helm') {
             steps {
                 echo "Deploying application with Helm to ${KIND_CLUSTER_NAME}..."
@@ -120,7 +107,7 @@ pipeline {
                                 --create-namespace \
                                 --set image.repository=\$DOCKER_USER/${DOCKER_IMAGE_NAME} \
                                 --set image.tag=${env.BUILD_NUMBER} \
-                                --set image.pullPolicy=IfNotPresent \
+                                --set image.pullPolicy=Always \
                                 --wait \
                                 --timeout 5m \
                                 --atomic
