@@ -3,8 +3,6 @@ pipeline {
 
     environment {
         NODE_ENV = 'test'
-        SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_LOGIN = credentials('sonarqube-token')
         DOCKER_IMAGE_NAME = 'demo-cicd'
         KIND_CLUSTER_NAME = 'queueaicluster'
         HELM_RELEASE_NAME = 'demo-cicd'
@@ -37,21 +35,6 @@ pipeline {
             steps {
                 echo 'Running tests...'
                 sh 'npm test'
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                echo 'Running SonarQube analysis...'
-                withSonarQubeEnv('SonarQube') {
-                    sh """
-                        sonar-scanner \
-                        -Dsonar.projectKey=demo-cicd \
-                        -Dsonar.sources=. \
-                        -Dsonar.host.url=${SONAR_HOST_URL} \
-                        -Dsonar.login=${SONAR_LOGIN}
-                    """
-                }
             }
         }
 
